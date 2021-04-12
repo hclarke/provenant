@@ -3,10 +3,18 @@ use std::ops::Deref;
 use std::ptr;
 use std::sync::atomic::{compiler_fence, AtomicUsize, Ordering};
 
+/// An atomically reference counted shared pointer
+///
+/// See the documentation for [`Arc`](std::sync::Arc) in the standard library.
+/// This one has different weak pointers.
 pub struct Arc<T: ?Sized> {
     ptr: *const Inner<T>,
 }
 
+/// A weak pointer to an atomically reference counted shared pointer
+///
+/// Can be upgraded to an [`Arc`], and will usually do the right thing.
+/// Does not prevent the pointed-to memory from being dropped or deallocated.
 #[derive(Copy, Clone)]
 pub struct Weak<T: ?Sized> {
     provenance: usize,
@@ -53,6 +61,8 @@ impl<T: ?Sized> Inner<T> {
 }
 
 impl<T: ?Sized> Weak<T> {
+	/// Attempts to get a strong reference to the pointed-to memory. Will probably fail and return None
+	/// if there are no strong pointers left.
     pub fn upgrade(&self) -> Option<Arc<T>> {
         let exp = self.provenance;
 
@@ -99,6 +109,7 @@ impl<T: ?Sized> Drop for Arc<T> {
 }
 
 impl<T> Arc<T> {
+	/// Create a new shared reference
     pub fn new(val: T) -> Self {
         let mut rng = rand::thread_rng();
         let provenance: usize = rng.gen();
@@ -115,6 +126,7 @@ impl<T> Arc<T> {
 }
 
 impl<T: ?Sized> Arc<T> {
+	/// Gets a weak reference to the same memory
     pub fn downgrade(this: &Self) -> Weak<T> {
         let inner = unsafe { &(*this.ptr) };
 
