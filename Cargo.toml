@@ -8,6 +8,7 @@ categories = ["concurrency", "data-structures"]
 description = "A version of Arc that can free memory while weak pointers exist by probabilistically tracking provenace."
 homepage = "https://github.com/hclarke/provenant"
 readme = "README.md"
+license = "MIT"
 
 [dependencies]
 rand = "0.8.3"
