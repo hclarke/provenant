@@ -78,8 +78,10 @@ impl<T: ?Sized> Weak<T> {
             return None;
         }
 
+        // increment ref count
         inner.ref_count.fetch_add(1, Ordering::SeqCst);
 
+        // release the lock
         inner.provenance.store(exp, Ordering::SeqCst);
 
         Some(Arc { ptr: self.ptr })
