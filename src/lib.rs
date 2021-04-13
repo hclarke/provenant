@@ -22,13 +22,19 @@ pub struct Weak<T: ?Sized> {
 }
 
 struct Inner<T: ?Sized> {
+    // the low bit is used to locking, the rest are random provenance id
     provenance: AtomicUsize,
+
+    // reference count of Arcs. Weak refs are uncounted
     ref_count: AtomicUsize,
+
     data: T,
 }
 
 impl<T: ?Sized> Drop for Inner<T> {
     fn drop(&mut self) {
+        // using a volatile write followed by a fence should actually zero the memory
+        // and not get optimized out
         unsafe {
             ptr::write_volatile(&mut self.provenance, AtomicUsize::default());
         }
@@ -61,8 +67,8 @@ impl<T: ?Sized> Inner<T> {
 }
 
 impl<T: ?Sized> Weak<T> {
-	/// Attempts to get a strong reference to the pointed-to memory. Will probably fail and return None
-	/// if there are no strong pointers left.
+    /// Attempts to get a strong reference to the pointed-to memory. Will probably fail and return None
+    /// if there are no strong pointers left.
     pub fn upgrade(&self) -> Option<Arc<T>> {
         let exp = self.provenance;
 
@@ -85,23 +91,33 @@ impl<T: ?Sized> Drop for Arc<T> {
         {
             let inner = unsafe { &(*self.ptr) };
 
+            // we need to load provenance before decrementing ref count.
+            // otherwise, another thread could deallocate before the load happens
+            let exp = inner.provenance.load(Ordering::SeqCst);
+            let exp = exp ^ (exp & 1);
+
             if inner.ref_count.fetch_sub(1, Ordering::SeqCst) > 1 {
                 return;
             }
 
-            let exp = inner.provenance.load(Ordering::Relaxed);
-            let exp = exp ^ (exp & 1);
-
+            // if the lock fails, another thread must have dropped Inner already
+            // that can happen if this gets interrupted while a weak pointer
+            // upgrades and then drops (hitting 0 again)
             if !inner.lock(exp) {
                 return;
             }
 
+            // if the ref count isn't 0, a weak pointer managed to upgrade.
+            // it can deal with deallocating when it hits 0 again.
             if inner.ref_count.load(Ordering::SeqCst) != 0 {
                 inner.provenance.store(exp, Ordering::SeqCst);
                 return;
             }
+
+            // setting provenance to 0 isn't strictly necessary here, since Inner::drop does it
+            inner.provenance.store(0, Ordering::SeqCst);
         }
-        //TODO: atomic fence?
+
         unsafe {
             Box::from_raw(self.ptr as *mut Inner<T>);
         }
@@ -109,7 +125,7 @@ impl<T: ?Sized> Drop for Arc<T> {
 }
 
 impl<T> Arc<T> {
-	/// Create a new shared reference
+    /// Create a new shared reference
     pub fn new(val: T) -> Self {
         let mut rng = rand::thread_rng();
         let provenance: usize = rng.gen();
@@ -126,7 +142,7 @@ impl<T> Arc<T> {
 }
 
 impl<T: ?Sized> Arc<T> {
-	/// Gets a weak reference to the same memory
+    /// Gets a weak reference to the same memory
     pub fn downgrade(this: &Self) -> Weak<T> {
         let inner = unsafe { &(*this.ptr) };
 
