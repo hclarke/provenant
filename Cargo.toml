@@ -5,7 +5,9 @@ authors = ["harri"]
 edition = "2018"
 keywords = ["arc", "sync", "data-structure"]
 categories = ["concurrency", "data-structures"]
-description = "A version of Arc that can free memory while weak pointers exist by probabilistically tracking provenace"
+description = "A version of Arc that can free memory while weak pointers exist by probabilistically tracking provenace."
+homepage = "https://github.com/hclarke/provenant"
+readme = "README.md"
 
 [dependencies]
 rand = "0.8.3"
